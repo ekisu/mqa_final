@@ -1,6 +1,6 @@
 library(psych)
 data <- read.csv("data.txt", na.strings="?")
-attach(mydata)
+attach(data)
 
 #definir variaveis
 X<- subset(data, select = c("LOCATION","ERECTED","LENGTH","LANES"))

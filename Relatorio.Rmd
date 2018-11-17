@@ -6,32 +6,16 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+library(rgl)
 knitr::opts_chunk$set(echo = TRUE)
+knitr::knit_hooks$set(webgl = hook_webgl)
 ```
-
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
-```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
 
 ## ANOVA
 
-```{r anova, results='asis'}
+Nesta analise ANOVA, tentaremos ver se existe uma relação entre o ano de construção da ponte (ERECTED), e o material da qual ela foi construída:
+
+```{r anova1, results='asis'}
 # Realizar ANOVA entre ano de criação da ponte (ERECTED) e material.
 data <- read.csv("data.txt", na.strings="?")
 dataSubset <- subset(data, select = c("ERECTED", "MATERIAL"))
@@ -49,10 +33,19 @@ somaTotalQuadrados <- sum((dataSubset$ERECTED - mediaAno) ^ 2)
 dadosWood <- subset(dataSubset, MATERIAL == "WOOD")
 dadosIron <- subset(dataSubset, MATERIAL == "IRON")
 dadosSteel <- subset(dataSubset, MATERIAL == "STEEL")
+```
 
+Para ter uma ideia de se o material tem alguma relação com o ano de construção, primeiro vejamos a distribuição dos materiais pelos anos. Os gráficos representam as pontos de madeira, ferro, e aço, respectivamente:
+
+```{r anova2, results='asis'}
 stripchart(dadosWood$ERECTED, method="stack", xlim=xlim)
 stripchart(dadosIron$ERECTED, method="stack", xlim=xlim)
 stripchart(dadosSteel$ERECTED, method="stack", xlim=xlim)
+```
+
+Aparenta existir uma relação, então vamos fazer a tabela ANOVA, considerando este fator:
+
+```{r anova3, results='asis'}
 
 mediaWood <- mean(dadosWood$ERECTED)
 mediaIron <- mean(dadosIron$ERECTED)
@@ -84,5 +77,166 @@ kable(tabelaAnova, caption = "Tabela ANOVA")
 
 print(paste("Valor de f para 2,", n - 2 - 1, ", com 95% de confiança:", qf(0.95, 2, n - 2 - 1)))
 print(paste("Como este valor é menor que", quadradoMedioEntre / quadradoMedioDentro, "rejeitamos a hipótese nula."))
-
 ```
+
+## Análise de regressão simples
+
+Nos nossos dados, existem 3 variáveis numéricas: ERECTED (ano de construção), LENGTH (tamanho da ponte), e LANES (número de pistas). Assim sendo, tentaremos ver se existe alguma relação linear entre elas, primeiro olhando os gráficos, e depois criando um modelo de regressão linear.
+
+```{r rsimples1}
+# Tentar realizar regressão simples em cima das variaveis numéricas
+data <- read.csv("data.txt", na.strings="?")
+dataELength <- subset(data, select = c("ERECTED", "LENGTH"))
+dataELength <- dataELength[complete.cases(dataELength), ]
+
+dataELanes <- subset(data, select = c("ERECTED", "LANES"))
+dataELanes <- dataELanes[complete.cases(dataELanes), ]
+
+dataLengthLanes <- subset(data, select = c("LENGTH", "LANES"))
+dataLengthLanes <- dataLengthLanes[complete.cases(dataLengthLanes), ]
+```
+
+Após ler os dados, montaremos gráficos ERECTED x LENGTH, ERECTED x LANES e LENGTH x LANES, respectivamente:
+
+```{r rsimples2}
+plot(dataELength$ERECTED, dataELength$LENGTH, pch = 16)
+plot(dataELanes$ERECTED, dataELanes$LANES, pch = 16)
+plot(dataLengthLanes$LENGTH, dataLengthLanes$LANES, pch = 16)
+
+# Escolhemos a relação LENGTH em função de ERECTED
+modeloLinear <- lm(LENGTH ~ ERECTED, data = dataELength)
+summary(modeloLinear)
+
+plot(dataELength$ERECTED, dataELength$LENGTH, pch = 16)
+abline(modeloLinear)
+```
+
+No final, ao analisarmos o gráfico gerado pela regressão linear, vemos que existem pontos que estão muito longes da linha, e que, no geral, eles não se aproximam tanto dela. Embora pareça haver uma tendência de aumento de tamanho ao passar dos anos, este modelo não prevê muito bem.
+
+## Análise de Regressão Múltipla
+
+Das três variáveis numéricas, não aparenta existir informação o bastante para justificar uma regressão múltipla. Visualmente, é possível ver isto pelo gráfico gerado abaixo.
+
+```{r rmult1, webgl=TRUE}
+library(rgl)
+
+data <- read.csv("data.txt", na.strings="?")
+dataSubset <- subset(data, select = c("ERECTED", "LENGTH", "LANES"))
+dataSubset <- dataSubset[complete.cases(dataSubset), ]
+
+plot3d(dataSubset)
+```
+
+De qualquer maneira, vamos tentar adicionar um outro fator ao modelo linear criado anteriormente (LENGTH em função de ERECTED), adicionando a variável LANES ao modelo:
+
+```{r rmult2}
+# Vamos tentar partir do modelo da regressão simples, e tentar adicionar uma outra variável (LANES).
+modeloLinear <- lm(LENGTH ~ ERECTED, data = dataSubset)
+modeloMultipla <- lm(LENGTH ~ ERECTED + LANES, data = dataSubset)
+kable(anova(modeloLinear, modeloMultipla), caption = "Tabela ANOVA, comparando os modelos LENGTH ~ ERECTED e LENGTH ~ ERECTED + LANES")
+```
+
+O modelo com mais variáveis aparenta melhorar a previsão, diminuindo a soma de quadrados residuais, com um *p-value* relativamente pequeno.
+
+## Análise de Componentes Principais
+
+```{r acp}
+library(psych)
+data <- read.csv("data.txt", na.strings="?")
+attach(data)
+
+#definir variaveis
+X<- subset(data, select = c("LOCATION","ERECTED","LENGTH","LANES"))
+X<- X[complete.cases(X), ]
+
+#descricoes estatisticas
+summary(X)
+
+#matriz de correlacao
+cor(X)
+```
+
+As variáveis utilizadas para essa análise foram a localização, o ano de lançamento, a distância total e o número de linhas.
+
+````{r acp2}
+#PCA
+pca1 <- princomp(X, scores=TRUE, cor=TRUE)
+
+#descricoes estatisticas do PCA
+summary(pca1)
+```
+
+Realizada a função de montar os componentes principais, podemos observar que os dois primeiros componentes são capazes de representarem, juntos, aproximadamente 75% dos dados avaliados, o que, em teoria, é grande o suficiente para se realizar uma análise dos mesmos.
+
+````{r acp3}
+#Componentes Principais
+loadings(pca1)
+```
+
+É interessante observar que, entre os dois componentes, a variável que mais se destacou foi a ERECTED, ano de lançamento. Uma conclusão que poderíamos ter, portanto, sobre essa análise, é que, o ano influencia diretamente sobre a montagem de pontes, ou seja, cada vez mais próximo do presente, as pontes tendem a ser mais sofisticadas, com materiais mais resistentes, e mais práticas, com mais linhas e maior em largura. O que faz muito sentido considerando o fato de que as infraestruturas sempre tendem a evoluir. Mas para ter mais certeza, a ANOVA procura explicar a relação direta entre o ano de lançamento e outras variáveis.
+
+```{r acp4}
+#Imprimir os autovalores
+plot(pca1)
+screeplot(pca1, type="line", main="Scree Plot")
+
+#Imprimir os escores
+biplot(pca1)
+
+#Rotacao VARIMAX
+pca2 <- principal(X, nfactors = 2, scores=TRUE)
+summary(pca2)
+biplot(pca2)
+```
+## Análise Fatorial
+
+
+
+## Escalonamento Multidimensional
+
+```{r multscal}
+# Classical MDS
+# N rows (objects) x p columns (variables)
+# each row identified by a unique row name
+
+data <- read.csv("data.txt", na.strings="?")
+data <- data[complete.cases(data), ]
+rownames(data) <- data[, 1]
+mydata<- subset(data, select = c("ERECTED","LENGTH","LANES"))
+d <- dist(mydata) # euclidean distances between the rows
+fit <- cmdscale(d,eig=TRUE, k=2) # k is the number of dim
+fit # view results
+
+# plot solution 
+x <- fit$points[,1]
+y <- fit$points[,2]
+plot(x, y, xlab="Coordinate 1", ylab="Coordinate 2", 
+     main="Metric	MDS",	type="n")
+text(x, y, labels = row.names(mydata), cex=.7)
+```
+
+
+## Análise discriminante
+
+
+
+## Correlação Canônica
+
+
+
+## Testes de Aderência (Análise de Dados Categorizados)
+
+
+
+## Co-clustering
+
+
+
+## Random Forest
+
+
+
+## Regressão Logística
+
+
+
