@@ -79,6 +79,59 @@ print(paste("Valor de f para 2,", n - 2 - 1, ", com 95% de confiança:", qf(0.95
 print(paste("Como este valor é menor que", quadradoMedioEntre / quadradoMedioDentro, "rejeitamos a hipótese nula."))
 ```
 
+Tentamos fazer essa análise para todo par de variáveis numérica-nominal, e testamos a significância daquela relação baseados nos seus *p-values*:
+
+```{r anova4, results='asis'}
+significance <- function(x) {
+  if (x <= 0.001) {
+	"***"
+  } else if (x <= 0.01) {
+	"**"
+  } else if (x <= 0.05) {
+	"*"
+  } else if (x <= 0.1) {
+	"."
+  } else {
+	" "
+  }
+}
+
+data <- read.csv("data.txt", na.strings="?")
+
+numerical <- c("ERECTED", "LENGTH", "LANES")
+nominal <- c("PURPOSE", "CLEAR.G", "T.OR.D", "MATERIAL", "SPAN", "REL.L", "TYPE")
+
+pValuesMatrix <- matrix(0, nrow = length(nominal), ncol = length(numerical))
+rownames(pValuesMatrix) <- nominal
+colnames(pValuesMatrix) <- numerical
+
+significanceMatrix <- matrix(0, nrow = length(nominal), ncol = length(numerical))
+rownames(significanceMatrix) <- nominal
+colnames(significanceMatrix) <- numerical
+
+for (numVar in numerical) {
+  for (nomVar in nominal) {
+	form <- as.formula(paste(numVar, "~", paste0("`", nomVar, "`")))
+	dataSubset <- subset(data, select = c(numVar, nomVar))
+	dataSubset <- dataSubset[complete.cases(dataSubset), ]
+    
+	analysis <- aov(form, data = dataSubset)
+    
+	pVal <- summary(analysis)[[1]][["Pr(>F)"]][[1]]
+	pValuesMatrix[nomVar, numVar] <- pVal
+	significanceMatrix[nomVar, numVar] <- significance(pVal)
+  }
+}
+
+library(knitr)
+kable(pValuesMatrix, caption = "Matriz de p-values")
+kable(significanceMatrix, caption = "Matriz de significancia.")
+```
+
+A legenda para a matriz de significância é como segue: `0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1`
+
+Nesta tabela, podemos ver que diversos fatores têm significância com o ano de construção da ponte, tirando PURPOSE e T.OR.D (*through-or-deck*), existe uma significância fraca com LENGTH, e alguns têm significância com LANES, outros não.
+
 ## Análise de regressão simples
 
 Nos nossos dados, existem 3 variáveis numéricas: ERECTED (ano de construção), LENGTH (tamanho da ponte), e LANES (número de pistas). Assim sendo, tentaremos ver se existe alguma relação linear entre elas, primeiro olhando os gráficos, e depois criando um modelo de regressão linear.
@@ -188,8 +241,117 @@ pca2 <- principal(X, nfactors = 2, scores=TRUE)
 summary(pca2)
 biplot(pca2)
 ```
+
 ## Análise Fatorial
 
+```{r af}
+#Inicializacao dos dados
+
+data <- read.csv("data.txt", na.strings="?")
+dataSubset <- subset(data, select = c("ERECTED", "LENGTH", "LANES"))
+dados <- dataSubset[complete.cases(dataSubset), ]
+summary(dados)
+
+#Preparacao da matriz de correlacao
+matriz_correlacao <- cor(dados)
+print(matriz_correlacao,digits=3)
+
+#Corgrama
+library(corrplot)
+corrplot(matriz_correlacao)
+corrplot.mixed(matriz_correlacao, lower = "number", upper = "circle", number.cex = 0.5, tl.pos = "lt")
+corrplot(matriz_correlacao, method = "square", number.cex = 0.5, addCoef.col = "black")
+corrplot(matriz_correlacao, method = "circle", number.cex = 0.5, addCoef.col = "black")
+
+#Teste de esfericidade de Bartlett
+
+Bartlett.sphericity.test <- function(x)
+{
+  method <- "Teste de esfericidade de Bartlett"
+  data.name <- deparse(substitute(x))
+  x <- subset(x, complete.cases(x)) # Omitindo valores faltantes
+  n <- nrow(x)
+  p <- ncol(x)
+  chisq <- (1-n+(2*p+5)/6)*log(det(cor(x)))
+  df <- p*(p-1)/2
+  p.value <- pchisq(chisq, df, lower.tail=FALSE)
+  names(chisq) <- "X-squared"
+  names(df) <- "df"
+  return(structure(list(statistic=chisq, parameter=df, p.value=p.value,
+                        method=method, data.name=data.name), class="htest"))
+}
+Bartlett.sphericity.test(dados)
+
+#KMO
+kmo = function(x)
+{
+  x = subset(x, complete.cases(x))
+  r = cor(x)
+  r2 = r^2 
+  i = solve(r) 
+  d = diag(i) 
+  p2 = (-i/sqrt(outer(d, d)))^2 
+  diag(r2) <- diag(p2) <- 0 
+  KMO = sum(r2)/(sum(r2)+sum(p2))
+  MSA = colSums(r2)/(colSums(r2)+colSums(p2))
+  return(list(KMO=KMO, MSA=MSA))
+}
+
+kmo_data <- kmo(dados)
+print(kmo_data)
+
+#Matriz de correlacao parcial
+partial.cor <- function (x)
+{
+  R <- cor(x)
+  RI <- solve(R)
+  D <- 1/sqrt(diag(RI))
+  Rp <- -RI * (D %o% D)
+  diag(Rp) <- 0
+  rownames(Rp) <- colnames(Rp) <- colnames(x)
+  Rp
+}
+mat_anti_imagem <- -partial.cor(dados)
+mat_anti_imagem
+
+#Método dos componentes principais com a matriz de correlação amostral
+acpcor <- prcomp(dados, scale = TRUE)
+summary(acpcor)
+
+plot(1:ncol(dados), acpcor$sdev^2, type = "b", xlab = "Componente",
+     ylab = "Vari?ncia", pch = 20, cex.axis = 1.3, cex.lab = 1.3)
+
+#fatores
+k <- 3
+carfat <- acpcor$rotation[, 1:k] %*% diag(acpcor$sdev[1:k])
+colnames(carfat) <- paste("Fator", 1:k, sep = " ")
+carfat
+
+#estimação das comunalidades e das variâncias específicas
+comum <- rowSums(carfat^2)
+vespec <- diag(matriz_correlacao) - comum
+estimat <- cbind(comum, vespec, diag(matriz_correlacao))
+rownames(estimat) <- colnames(dados)
+colnames(estimat) <- c("Comunalidade", "Vari?ncia ?nica", "Vari?ncia")
+estimat
+
+resid <- matriz_correlacao - (carfat %*% t(carfat) + diag(vespec))
+resid
+
+#Visando auxiliar na interpretação dos fatores, realizamos uma rotação pelo método varimax.
+#A função varimax encontra-se no pacote stats.
+
+carfatr <- varimax(carfat)
+carfatr
+
+#Plot sem rotação varimax
+plot(carfat, pch = 20, col = "red", xlab = "Fator 1", ylab = "Fator 2")
+text(carfat, rownames(carfat), adj = 1)
+
+#Plot com rotação varimax
+plot(carfatr$loadings, pch = 20, col = "red", xlab = "Fator 1", ylab = "Fator 2")
+text(carfatr$loadings, rownames(carfat), adj = 1)
+```
 
 
 ## Escalonamento Multidimensional
@@ -218,6 +380,98 @@ text(x, y, labels = row.names(mydata), cex=.7)
 
 ## Análise discriminante
 
+Para a análise discriminante, tentaremos prever a variavel nominal MATERIAL partindo das variáveis numéricas ERECTED, LENGTH e LANES.
+
+```{r ad1}
+## Biblioteca com a função discriminante linear de Fisher
+library(MASS)
+## Dados (?iris apresenta informações sobre o conjunto de dados)
+data <- read.csv("data.txt", na.strings="?")
+dataSubset <- subset(data, select = c("MATERIAL", "ERECTED", "LENGTH", "LANES"))
+dados <- dataSubset[complete.cases(dataSubset), ]
+#analise discriminante
+
+#install.packages('psych')
+library(psych)
+#mostra cof de colisão
+pairs.panels(dados[2:4],
+         	gap=0,
+         	bg=c("red", "green", "blue")[dados$MATERIAL],
+         	pch=21)
+```
+
+Esses gráficos permitiram confirmar, novamente, que existe uma pequena relação entre a variável tempo (ERECTED) e distância (LENGTH), já que, conforme o tempo passava, pontes com maiores distâncias começaram a surgir, porém isso não significava que pontes menores deixariam de ser construídas, o que faz sentido uma vez que o tempo não necessariamente determina a largura que uma ponte deve ter, quem determinaria isso seria a posição geográfica determinada, ou seja, uma ponte deve ser projetada conforme a necessidade local. Além disso, podemos observar que a variável tempo e a variável material estão fortemente relacionado, uma vez que, cada grupo de material, seja madeira, ferro ou aço, está claramente isolado e de acordo com um certo período de tempo. Como podemos observar, houve uma forte presença de pontes de madeira entre 1800 e 1850. E muitas pontes de ferro entre 1850 e 1900. E por fim, muitas pontes de aço entre 1900 até hoje, o que reafirma o que foi concluído anteriormente. 
+
+```{r ad0}
+#graphics.off()
+par("mar")
+par(mar=c(1,1,1,1))
+
+# Data partition
+set.seed(555)
+ind <- sample(2, nrow(dados),
+          	replace=TRUE,
+          	prob= c(0.6, 0.4))
+training <- dados[ind==1, ]
+testing <- dados[ind==2, ]
+
+# Linear discriminat analysis
+library(MASS)
+linear <- lda(MATERIAL~ ., data=training)
+linear
+```
+
+Baseado nos coeficientes de discriminância linear, podemos observar que as duas funções discriminantes formadas se baseavam, basicamente, no tempo (ERECTED). Apesar de o número de linhas (LANES) ser a segunda maior variável em questão, seu coeficiente não representa grande parte dos dados, ou melhor, influencia muito pouco em relação ao tempo. Assim, o tempo é, de fato, a variável que mais influencia nos dados, um resultado já previsto anteriormente com as outras análises.  
+
+```{r ad5}
+attributes(linear)
+linear$prior
+linear$counts
+
+#Histogram
+p <- predict(linear, training) #para cada registro quando foi a previsão
+# $posterior mostra a prob de cada registro para cada classe
+# $x margem de erro e acerto
+
+#mostra a separação entre os grupos
+ldahist(data = p$x[, 1], g= training$MATERIAL)
+ldahist(data = p$x[, 2], g=training$MATERIAL)
+```
+
+Baseado nesses dois histogramas, podemos confirmar, portanto, o fato de que o tempo influencia muito mais do que o número de linhas, pois na primeira função, onde apenas o tempo está sendo levado em conta, a distribuição da função discriminante em cada grupo está boa, com cada grupo isolado em uma posição do histograma, com menos overlapping que o segundo histograma, onde apenas a variável número de linhas é levado em conta.
+
+```{r ad3}
+# Bi-Plot
+#library(devtools)
+#install.packages("githubinstall")
+#library(githubinstall)
+#install_github("fawda123/ggord")
+#gh_install_packages("ggord")
+library(ggord)
+ggord(linear, training$MATERIAL, ylim= c(-10, 10)) #mostra escores
+```
+
+Em particular, o gráfico acima mostra algo interessante: os grupos se colidem, e mais importante, o grupo IRON está contido completamente dentro do grupo WOOD, assim eles não são exclusivos.
+
+```{r ad2}
+#Partition plot
+#install.packages("klaR")
+library(klaR)
+partimat(MATERIAL~., data = training, method="lda")
+partimat(MATERIAL~., data = training, method="qda")
+
+#Confusion matrix and accuracy - training data
+p1 <- predict(linear, training)$class
+tab <- table(Predicted = p1, Actual = training$MATERIAL)
+tab
+#print(paste(“Quantidade prevista (%):”, sum(diag(tab))/sum(tab)*100))
+
+#Confusion matrix and accuracy - testing data
+p2 <- predict(linear, testing)$class
+tab2 <- table(Predicted = p2, Actual = testing$MATERIAL)
+tab2
+#print(paste(“Quantidade prevista (%):”, sum(diag(tab2))/sum(tab2)*100))
+```
 
 
 ## Correlação Canônica
@@ -237,6 +491,8 @@ text(x, y, labels = row.names(mydata), cex=.7)
 
 
 ## Regressão Logística
+
+
 
 
 

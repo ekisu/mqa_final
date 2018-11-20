@@ -43,7 +43,7 @@ library(githubinstall)
 install_github("fawda123/ggord")
 gh_install_packages("ggord")
 library(ggord)
-ggord(linear, training$Species, ylim= c(-10, 10)) #mostra escores
+'ggord(linear, training$Species, ylim= c(-10, 10)) #mostra escores
 
 #Partition plot
 install.packages("klarR")
