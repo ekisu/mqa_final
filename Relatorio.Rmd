@@ -262,7 +262,11 @@ corrplot(matriz_correlacao)
 corrplot.mixed(matriz_correlacao, lower = "number", upper = "circle", number.cex = 0.5, tl.pos = "lt")
 corrplot(matriz_correlacao, method = "square", number.cex = 0.5, addCoef.col = "black")
 corrplot(matriz_correlacao, method = "circle", number.cex = 0.5, addCoef.col = "black")
+```
 
+Como podemos observar, entre as variáveis númericas do banco de dados, a variável ano de lançamento (ERECTED) é a variável que mais influencia sobre as outras variáveis, como concluído nas análises anteriores. Para garantir que essa análise está, de fato, bem calculada, realizamos o teste de esfericidade de Bartlett e o teste KMO
+
+```{r af2}
 #Teste de esfericidade de Bartlett
 
 Bartlett.sphericity.test <- function(x)
@@ -281,7 +285,11 @@ Bartlett.sphericity.test <- function(x)
                         method=method, data.name=data.name), class="htest"))
 }
 Bartlett.sphericity.test(dados)
+```
 
+Como podemos observar no teste, a nossa análise tem cerca de 44% de chance do modelo fatorial ser inapropriado, o que é um resultado pouco satisfatório, pois, pensando ao contrário, temos apenas 56% de certeza que essa técnica é apropriada. Mas ainda assim pode ser uma técnica a ser levada em conta. O teste KMO deve determinar se ela é realmente ou não.
+
+```{r af5}
 #KMO
 kmo = function(x)
 {
@@ -299,21 +307,11 @@ kmo = function(x)
 
 kmo_data <- kmo(dados)
 print(kmo_data)
+```
 
-#Matriz de correlacao parcial
-partial.cor <- function (x)
-{
-  R <- cor(x)
-  RI <- solve(R)
-  D <- 1/sqrt(diag(RI))
-  Rp <- -RI * (D %o% D)
-  diag(Rp) <- 0
-  rownames(Rp) <- colnames(Rp) <- colnames(x)
-  Rp
-}
-mat_anti_imagem <- -partial.cor(dados)
-mat_anti_imagem
+Como o o índice KMO, nessa análise, foi de 0.44, segundo a tabela de medida de precisão da análise, todas as análises que tenham KMO abaixo de 0.5 são inaceitáveis. Portanto, realizar uma análise fatorial é improdutiva e, assim, não deve ser mais levado em conta. 
 
+```{r af9}
 #Método dos componentes principais com a matriz de correlação amostral
 acpcor <- prcomp(dados, scale = TRUE)
 summary(acpcor)
@@ -343,7 +341,11 @@ resid
 
 carfatr <- varimax(carfat)
 carfatr
+```
 
+Mesmo que a análise deva ser ignorada, podemos utilizar de algumas conclusões que essa análise pode fazer. A partir das informações acimas, podemos verificar que ERECTED foi a variável escolhida como a mais influenciadora, já que no primeiro fator. O que, mesmo sendo uma análise imprecisa, ainda confirma aquilo que já foi analisado anteriormente. E podemos prosseguir com a mesma linha de raciocínio para outras análises restantes. 
+
+```{r af3}
 #Plot sem rotação varimax
 plot(carfat, pch = 20, col = "red", xlab = "Fator 1", ylab = "Fator 2")
 text(carfat, rownames(carfat), adj = 1)
@@ -357,14 +359,14 @@ text(carfatr$loadings, rownames(carfat), adj = 1)
 ## Escalonamento Multidimensional
 
 ```{r multscal}
-# Classical MDS
+### Classical MDS
 # N rows (objects) x p columns (variables)
 # each row identified by a unique row name
 
 data <- read.csv("data.txt", na.strings="?")
 data <- data[complete.cases(data), ]
 rownames(data) <- data[, 1]
-mydata<- subset(data, select = c("ERECTED","LENGTH","LANES"))
+mydata<- subset(data, select = c("LOCATION"))
 d <- dist(mydata) # euclidean distances between the rows
 fit <- cmdscale(d,eig=TRUE, k=2) # k is the number of dim
 fit # view results
@@ -377,6 +379,7 @@ plot(x, y, xlab="Coordinate 1", ylab="Coordinate 2",
 text(x, y, labels = row.names(mydata), cex=.7)
 ```
 
+Apesar de haver um mapa das localizações das pontes, uma variável que não relaciona um dado com outro dado, ou seja, fornece uma relação de distância entre elas, não é capaz de formar um gráfico de distâncias entre as variáveis, o que é o principal propósito da análise de Escalonamento Multidimensional. Pelo gráfico dado acima, cada ponto (x,y) se baseou na categoria localização de 1 a 52 fornecida pela variável LOCATION, e não representa uma relação entre esses dados. Logo, essa análise é inválida, uma vez que não há informações disponíveis para o uso apropriado dessa técnica. 
 
 ## Análise discriminante
 
@@ -476,15 +479,43 @@ tab2
 
 ## Correlação Canônica
 
-
+A técnica de correlação canônica busca encontrar correlações entre dois conjuntos de variáveis quantitativas. Como nosso conjunto de dados não apresenta variáveis numéricas o suficiente para realizar este tipo de análise, determinamos a técnica como desnecessária.
 
 ## Testes de Aderência (Análise de Dados Categorizados)
+Para os testes de aderência, tentaremos uma simples hipótese (por falta de alternativas): de que metade das pontes é de aço, e metade não é.
 
+```{r testeaderencia}
+# H_0: a distribuição das pontes é de 50% STEEL, 50% o resto
+# H_1: a distribuição não é.
+data <- read.csv("data.txt", na.strings="?")
+dataSubset <- subset(data, select = c("MATERIAL"))
+dataSubset <- dataSubset[complete.cases(dataSubset), ]
 
+observados <- c(length(dataSubset[dataSubset == "STEEL"]), length(dataSubset[dataSubset != "STEEL"]))
+p <- c(0.5, 0.5)
+
+chisq.test(x = observados, p=p, simulate.p.value = TRUE)
+```
+
+Como vimos, a probabilidade desses dados se adequarem a probabilidade é muito baixa, menor que o nível de significância comum, de 0.05.
 
 ## Co-clustering
 
+```{r cc}
+library(blockcluster)
+data <- read.csv("data.txt", na.strings="?")
+dataSubset <- subset(data, select = c("ERECTED", "LENGTH", "LANES"))
+dados <- subset(data, select = c("LOCATION","ERECTED","LENGTH","LANES"))
+dados <- data.matrix(data)
+#usage of cocluster function in its most simplest form
+out<-cocluster(dados,datatype="continuous",nbcocluster=c(2,3))
+#Summarize the output results
+summary(out)
+#Plot the original and Co-clustered data 
+plot(out)
+```
 
+Como é possível observar, a partir das variáveis fornecidas, não foi possível montar um cocluster sobre elas, uma vez que são insuficientes para formar agrupamentos independentes. Com isso, é possível afirmar que a técnica de Co-Clustering, para o nosso caso, não é uma técnica útil. 
 
 ## Random Forest
 
@@ -496,3 +527,4 @@ tab2
 
 
 
+ 
