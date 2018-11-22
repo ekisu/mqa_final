@@ -519,7 +519,43 @@ Como é possível observar, a partir das variáveis fornecidas, não foi possív
 
 ## Random Forest
 
+```{r rf}
+require(randomForest)
+require(MASS)
+dataSubset <- read.csv("data.txt", na.strings="?")
+dataSubset = subset(dataSubset, select = -IDENTIF)
+dados <- dataSubset[complete.cases(dataSubset), ]
+attach(dados)
+set.seed(101)
+dim(dados)
 
+#training Sample with 300 observations
+
+train=sample(1:nrow(dados),40)
+?dados  #to search on the dataset
+dados.rf = randomForest(ERECTED ~ . , data = dados , subset = train)
+dados.rf
+plot(dados.rf)
+oob.err=double(13)
+test.err=double(13)
+
+#mtry is no of Variables randomly chosen at each split
+for(mtry in 1:13) 
+{
+  rf=randomForest(ERECTED ~ . , data = dados , subset = train,mtry=mtry,ntree=400) 
+  oob.err[mtry] = rf$mse[400] #Error of all Trees fitted
+  
+  pred<-predict(rf,dados[-train,]) #Predictions on Test Set for each Tree
+  test.err[mtry]= with(dados[-train,], mean( (ERECTED - pred)^2)) #Mean Squared Test Error
+  
+  cat(mtry," ") #printing the output to the console
+  
+}
+test.err
+oob.err
+matplot(1:mtry , cbind(oob.err,test.err), pch=19 , col=c("red","blue"),type="b",ylab="Mean Squared Error",xlab="Number of Predictors Considered at each Split")
+legend("topright",legend=c("Out of Bag Error","Test Error"),pch=19, col=c("red","blue"))
+```
 
 ## Regressão Logística
 
